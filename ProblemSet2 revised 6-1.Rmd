@@ -1,0 +1,467 @@
+---
+title: "Analysis for Influencial Factors of Canadian Divorce Rate"
+author: "Yuxuan Liu, Yuxuan Lin, Yangle Shang, Kexin Zhang"
+date: "10/18/2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(dplyr)
+knitr::opts_chunk$set(echo = FALSE)
+gss2017 <- read.csv("gss.csv", fileEncoding = 'utf-8')
+```
+
+Code and data supporting this analysis is available at: https://github.com/KexinZhang-Claire/STA304-PS2
+
+## Abstract
+
+Our study is a preliminary study focusing on the effect on the divorce rate when factoring income, age, children, education and health. By building generalized linear model, we found that it is less likely for younger couples with higher income, less children, lower education to get divorced. We care about divorce since it will negatively impacts children's mental health. 
+
+## Introduction
+
+According to some articles, divorce rates in Canada are currently in a decline pattern. At the beginning of the 21st century, the divorce rate was around 10 out of every 1000 couples, and by 2016, the proportion had dropped to 6 per 1000 couples. This may due to the fact that not as many people are getting married. Unlike the baby boomers who got married when they were young, millennials choose to marry after completing education, establishing a career and having a good financial situation. 
+
+In this analysis report, we would like to find out what factors could influence a person's decision on divorce and how divorce can be explained by taking these factors into consideration. 
+
+We raise several potential predictor variables that may have have an impact on whether people divorce, 
+which including current age, total children number, income, education, life satisfaction level, health,
+rural area or urban area, etc.
+
+The important part of this work is to determine the probability of getting divorced by building a 
+logistic model. Therefore, we can use this model to predict the likelihood of divorce for a person. 
+Then we would like to discuss the possible reason behind why and how these factors influence.
+If someone is predicted to have a high probability of getting divorced, we can try to avoid it by 
+contacting him and providing psychological counseling.
+
+
+## Data
+We obtained the dataset from gss2017. We downloaded the CSV data file and changed the raw data name by the labels and dictionary of gss2017.
+
+We utilized this dataset since it is the most updated version. However, a limitation is that it has been 3 years since released, so things would change a lot. Moreover, there are 81 variables and 20602 observation in this dataset, which almost cover everything we want to know. The variables can be expressed as following main concepts: date of birth, family origins, leaving the parental home, conjugal history, intentions and reasons to form a union, respondent’s children, fertility intentions, maternity/parental leave, organization and decision making within the household, arrangements and financial support after a separation/divorce, labour market new and education, health and subjective well-being, characteristics of respondent’s dwelling, and characteristics of respondent of spouse/partner.
+
+The target population for the 2017 GSS included all persons 15 years of age and older in Canada, excluding the residents of the Yukon, Northwest Territories, and Nunavut, also the full-time residents of institutions. The survey frame was created using two different components. One were the lists of landline and cellular telephone numbers in use available to Statistics Canada from various sources. Another was Address Register, which is a list of all dwellings within the ten provinces.
+
+The sampling method used was stratified random sampling, by dividing Canada into 27 strata according to geographic location. Each record in the survey frame was assigned to a stratum within its province. A simple random sample without replacement of records was next performed in each stratum. Then the households with the corresponding phone number would be reached, and a respondent was randomly selected from each household to participate in a telephone interview. 
+
+The collection of this data was via computer assisted telephone interviews, which included a telephone agent who contacts respondents by phone and asks questions to collect information. The advantages of this collection process is that telephone interview is cost-effective. It doesn't get restricted on geographic location. However, it is harder to make connection with respondents through telephone interview. For those who refused to response the survey, up to two more times re-contacted phone call were made to explain the importance of the survey and to encourage their participation.
+
+According to Cleek and Pearson(1993), children, financial condition, mental health, basic happiness are significantly affecting the marriage. Also, Shelby B. Scott found that education and age are also major reasons for divorce. Thus, we choose the following as our predictor variables for our research.
+
+age: The age of the respondent in 2017.
+
+total_children: Total number of children reported by respondent.
+
+feelings_life: The satisfaction level towards life.
+
+self_rated_health: The self rated physical health level reported by respondent.
+
+self_rated_mental_health: The self rated mental health level reported by respondent.
+
+income_family: The before tax income of the respondent received in 2016.
+
+education: The highest certificate, diploma or degree that respondent have completed.
+
+There are some variables that are possibly significant based on our common sense, such as: partner_sex, partner_main_activity, age_at_first_marriage, etc. However, since these variables contains large proportion of observations with NA, we didn't investigate on them.
+
+In addition to these variables, we made some adjustments to the data.
+
+Since the legal age for marriage in Canada is 18, we remove the data that are younger than 18. As to response variables, we changed the response variable into binomial by defining a new variable “divorce” as 1 if marital status is divorce , and 0 if marital status is other than divorce. Finally we removed all NAs in our data.
+
+```{r, include=F}
+gss2017 <- gss2017 %>% 
+  dplyr::select(province,
+         caseid,
+         marital_status,
+         self_rated_mental_health,
+         self_rated_health,
+         feelings_life,
+         age,
+         total_children,
+         own_rent, 
+         pop_center,
+         education,
+         income_family
+         )     #select the response variable and predictor
+gss2017 <- filter(gss2017,age>=18)
+
+gss2017 <- gss2017 %>%
+  mutate(divorce = case_when(
+    marital_status == "Divorced" ~ 1,
+    marital_status != "Divorced" ~ 0)) #change the response variable into binomial
+
+gss2017 <- na.omit(gss2017) #remove N/A
+```
+
+Urban city life always adds too much pressure to people's life. Meanwhile, it provides more entertainment than the rural areas. Therefore, we wanted to involve the pop_center variable into our response variable. Since we just cared about whether rural or urban area, we merged "Prince Edward Island" and "Rural areas and small population centers" into "Not Large Urban Population Centers".
+
+```{r, include=F}
+gss2017$pop_center[gss2017$pop_center == "Larger urban population centres (CMA/CA)"] <- "Larger urban population centres (CMA/CA)"
+gss2017$pop_center[gss2017$pop_center == "Prince Edward Island" | 
+                     gss2017$pop_center == "Rural areas and small population centres   (non CMA/CA)" ] <- "Not Large Urban Population Centres" #divide pop_center
+```
+
+Next, Shelby B. Scott found that education and age are also major reasons for divorce. So it is reasonable to separate the certificates into four groups called “high school”, “college”, “less than high school” and “university and above”.
+   
+```{r, include=F}
+gss2017$education[gss2017$education == "High school diploma or a high school equivalency certificate"] <- "High school"
+gss2017$education[gss2017$education == "Bachelor's degree (e.g. B.A., B.Sc., LL.B.)"] <- "Bachelor's degree" 
+gss2017$education[gss2017$education == "College, CEGEP or other non-university certificate or di..."] <- "college" 
+gss2017$education[gss2017$education == "Less than high school diploma or its equivalent"] <- "less than high school"                    
+gss2017$education[gss2017$education == "University certificate, diploma or degree above the bach..."|gss2017$education == "University certificate or diploma below the bachelor's level"|gss2017$education == "Bachelor's degree (e.g. B.A., B.Sc., LL.B.)"] <- "University and above"
+#simplify education
+```
+
+What's more, the information about whether the living place is rented or owned could help us determine the financial condition of the family. 
+
+```{r, include=F}
+gss2017$own_rent[gss2017$own_rent == "Don't know"|gss2017$own_rent == "Rented, even if no cash rent is paid"] <- "Rent"
+gss2017$own_rent[gss2017$own_rent == "Owned by you or a member of this household, even if it i..."] <- "Owned" #divide own_rent
+```
+
+#### Statistical Summary
+
+The table below gives a statistical summary which relates to the numerical variables.
+
+```{r, echo=FALSE, message=FALSE}
+t <- matrix(c(80, 18, 54.7, 52.86, 17.13, 7, 0, 2, 1.71, 1.48, 10, 0, 8, 8.09, 1.65), 
+                ncol = 5, byrow = T)
+colnames(t)<- c("max","mini","median", "mean", "SD")
+rownames(t) <- c("age", "total number of children ", "feelings of life")
+print(t)
+```
+
+For the categorical variables, we used the method of grouping, which calculates the number of each different group. 
+
+##### Pop center
+```{r, echo=F, message=FALSE}
+gss2017 %>%
+  group_by(pop_center) %>%
+  summarise(Counts = n())
+```
+
+In order to see the distribution of population, we focused on the variable pop_center. It tells us most people live in larger urban population centers, namely, 15139 in total, and 668 people live where not large urban population centers. The remaining 3763 live in rural areas and small population centers. 
+
+##### Rent or own
+```{r, echo=F, message=FALSE}
+gss2017 %>%
+  group_by(own_rent) %>%
+  summarise(Counts = n())
+```
+
+By summarizing the information of variable own_rent. About 74% of people owned the living place, and 26% people acted as renters. 
+
+##### Self rated physical health
+```{r, echo=F, message=F}
+gss2017 %>%
+  group_by(self_rated_health) %>%
+  summarise(Counts = n())
+ggplot(gss2017,aes(x=`self_rated_health`))+geom_bar()+theme(text=element_text(size=9),plot.title=element_text(size=15,hjust = 0.5))+labs(title="Self rated physical health")
+```
+
+The summarized data tells us most people located the level of good physical health (including excellent, very good and good), about 16769 in total. 1985 people felt their bodies were fair enough. Conversely, 773 people were in poor physical health, 43 people did not actually know their body condition. 
+
+##### Self rated mental health
+```{r, echo=F, message=F}
+gss2017 %>%
+  group_by(self_rated_mental_health) %>%
+  summarise(Counts = n())
+ggplot(gss2017,aes(x=`self_rated_mental_health`))+geom_bar()+theme(text=element_text(size=9),plot.title=element_text(size=15,hjust = 0.5))+labs(title="Self rated mental health")
+```
+
+Correspondingly, self rated physical health statistics exists, it is also necessary to do a statistical summary of the data of self rated mental health. The distribution of these data is extremely similar to that of physical health. 18016 people thought they were in the level of good mental health. Instead, 302 respondents were in poor mental health and 34 people did not know their mental condition. We can also see graphically that majority of the respondents think they have positive mental health condition.
+
+##### Income
+```{r, echo=F, message=F}
+gss2017 %>%
+  group_by(income_family) %>%
+  summarise(Counts = n())
+library(ggplot2)
+ggplot(gss2017,aes(x=`income_family`,fill=`divorce`))+geom_bar()+theme(text=element_text(size=9),plot.title=element_text(size=15,hjust = 0.5))+labs(title="Family income")
+```
+
+In particular, the distribution of the data of family's income is relatively on average. There are 2603 families in the lowest level of less than 25000 income. Then 4135 families distributed the next level of 25000 - 49999. In the range of 50000 - 74999, about 3532 families.  As the income level is increasing, the number of families are decreasing. There are 2808 families whose income has 75000 - 99999. About 2066 families whose income is in the range of 100000 - 124999. However, the number of highest income rises, exactly 4426 families.
+
+##### Education
+```{r, echo=F, message=F}
+gss2017 %>%
+  group_by(education) %>%
+  summarise(Counts = n())
+library(ggplot2)
+ggplot(gss2017,aes(x=`education`))+geom_bar()+theme(text=element_text(size=9),plot.title=element_text(size=15,hjust = 0.5))+labs(title="Education")
+```
+
+This histogram tells us most people had fundamental education at high school or above. Among these people, nearly 70% of them took higher education at university or above. About 5% people act as elites who have trade certificate or diploma.
+
+##### Marital status
+```{r, echo=F, message=F}
+gss2017 %>%
+  group_by(marital_status) %>%
+  summarise(Counts = n())
+```
+
+The most important data is marital status. Married people accounted for the largest proportion, 9229 out of 19570 observations. 4177 people were single and never married. In fact, there are 1708 divorced, 614 separated and 1825 widowed. 
+
+##### Divorce
+```{r, echo=F, message=F}
+gss2017 %>%
+  group_by(divorce) %>%
+  summarise(Counts = n())
+ggplot(gss2017,aes(x=`divorce`))+geom_bar()+theme(text=element_text(size=9),plot.title=element_text(size=15,hjust = 0.5))+labs(title="Divorce")
+```
+
+The statistical summary of variable divorce also confirmed the number of people who divorced, which about 8% of the observation.
+
+## Model
+
+To run our model, we are going to use R on RStudio. R is a programming language for statistical computation and graphics. RStudio is an integrated development environment (IDE) for R. It supports direct code execution, and provides tools for plotting, history, debugging and workspace management.
+
+Since the GSS data set mostly contains categorical variables and is linearly separable, logistic regression is performed to analyze the divorce of the respondents. The advantage of using logistic regression is that it is easy to implement, provides training efficiency, and is highly interpretable. In our data set, the response variable is not normally distributed, which will be well-handled with logistic regression. 
+
+We set the response variable "divorce" as binomial to fulfill the requirement for logistic regression. To fit a logistic regression model, the factor() function is applied on the categorical variables in the gss2017 data set to encode each vector as factors.
+
+```{r,echo=F,message=F}
+#factor the categorical variables and make the variables not ordered
+gss2017$own_rent<- factor(gss2017$own_rent , ordered = FALSE )
+gss2017$education<- factor(gss2017$education , ordered = FALSE )
+gss2017$income_family<- factor(gss2017$income_family , ordered = FALSE )
+gss2017$pop_center <- factor(gss2017$pop_center , ordered = FALSE )
+```
+
+According to the user's guide of the GSS data set, the data set was obtained from stratified sampling based on the geographic region of Canada. We divided the sample into strata by the respondent's province. Strata are subsets of the population that have been sampled. We will assume the population size per province with reference to the "Canada at a Glance 2017 Population" on Statistics Canada.
+
+We created a new variable named "fpc" to set up for the finite population correction. The finite population correction is used to reduce the variance when a substantial fraction of the total population of interest has been sampled. It can be specified either as the total population size in each stratum or as the fraction of the total population that has been sampled. In the "fpc" variable, we assigned the population of each province (stratum) to the observation that corresponds to the specific province under the "province" variable.
+
+In order to evaluate the model, we divided the data into training sets and testing sets. The receiving operating characteristic (ROC) curve will be used to perform model check. We decided to calculate the sensitivity (true positive rate) and specificity(true negative rate), noticing that ensitivity and specificity are inversely proportional to each other. We obtained the ROC curve by plotting the sensitivity against (1-specificity). 
+
+```{r,echo=F,message=F}
+gss2017$fpc<-ifelse(gss2017$province=="Ontario",12059761,ifelse(gss2017$province=="Quebec",7064800,ifelse(gss2017$province=="Manitoba",1096597,ifelse(gss2017$province=="Alberta ",3493066,ifelse(gss2017$province=="British Columbia",4282867,ifelse(gss2017$province=="Nova Scotia",824590,ifelse(gss2017$province=="Saskatchewan",934298,ifelse(gss2017$province == "Prince Edward Island",129185,ifelse(gss2017$province=="New Brunswick",659662
+,547554)))))))))
+
+```
+
+
+```{r,echo=F,message=F}
+#set seed and set the train and test set
+library(survey)
+set.seed(777)
+testi = sample(gss2017$caseid, 6000)
+test = gss2017[gss2017$caseid %in% testi,]
+train = gss2017[!gss2017$caseid %in% testi,]
+train = train %>%
+  dplyr::select(-caseid,-marital_status) #remove id from the train
+test = test %>%
+  dplyr::select(-caseid,-marital_status)
+```
+
+We built a survey based logit model to analyze our data. The purpose of using a survey based logit model is that we can use the information from survey design to correct variance estimates. Our first step was to use the svydesign() function from the "survey" package to combine the data and important survey information. After having the survey design specified, we could use the svyglm() function to construct our model.
+
+
+```{r,echo=F, message=F, warning=F}
+#build model
+design.strs<-svydesign(id=~1,strata=~province, data=train, fpc=~fpc)
+svyglm.strs.logit <- svyglm(divorce ~ feelings_life + self_rated_mental_health + 
+                              + self_rated_health + 
+                              age + total_children + 
+                              pop_center + education + 
+                              income_family + own_rent,
+                              design.strs,
+                              family="binomial")
+summary(svyglm.strs.logit)
+```
+
+The summary table of our model shows that there are several significant variables: Intercept, feelings_life, age, total_children, and income_family.
+
+Our model is shown below, where p is the probability of getting divorced.
+$$
+log(\frac{p}{1-p})=-7.824\ -0.112feelings\_life\ +0.765self\_rated\_mental\_healthExcellent\\+0.543self\_rated\_mental\_healthFair\ +0.5499self\_rated\_mental\_healthGood\\+0.592self\_rated\_mental\_healthPoor\ +0.704self\_rated\_mental\_healthVery good\\+3.075self\_rated\_healthExcellent\ +2.923self\_rated\_healthFair\\+2.992self\_rated\_healthGood\ +3.044self\_rated\_healthPoor\\ +2.9396self\_rated\_healthVery good\ +0.029age\ +0.108total\_children\\-0.545pop\_centerNot Large Urban Population Centres \\-0.233pop_centerRural areas and small population centres (non CMA/CA)\\+0.139educationcollege\ -0.254educationHigh school\ -0.786educationless than high school\\-0.152educationTrade certificate or diploma \ +0.16educationUniversity \\-0.458income\_family125,000 and more\ +1.247income\_family25,000 to 49,999\\+1.018income\_family50,000 to 74,999\ +0.54income\_family75,000 to 99,999\\+1.72income\_familyLess than 25,000\ +0.447own\_rentRent                   
+$$
+
+By substituting the information of the specific individual that we wanted to predict, we could get the log odds of the individual with regard to "divorce". If we apply the exponential function, we will get the estimated odds ratio. The Odds Ratio represents the odds that an outcome will occur given particular information with the predictors, compared to the odds of the outcome occurring without this information. When the odds ratio equals 1, the exposure does not affect the odds of the outcome. When the odds ratio is less than 1, the exposure is associated with lower odds of outcome. When the odds ratio is greater than 1, the exposure is associated with higher odds of outcome.
+```{r, include=F}
+oddsfeelingslife = exp(-0.112050)
+oddsage = exp(0.029159)
+oddstotal_children = exp(0.108213)
+oddsincome25000_49999= exp(1.247442)
+oddsincome50000_74999= exp(1.018754)
+oddsincomelessthan25000= exp(1.720076)
+oddsown_rent= exp(0.446533)
+oddsfeelingslife
+oddsage
+oddstotal_children
+oddsincome25000_49999
+oddsincome50000_74999
+oddsincomelessthan25000
+oddsown_rent
+```
+
+By calculating the odds, we noticed that significant variables such as age, total_children, income 25000-49999, income 50000-74999, income less than 25000, own_rent are associated with higher odds of outcome, that is, divorce rate is related to age, the number of children, the level of income and the ownership of housing.
+
+```{r,echo=F,message=F}
+library(pROC)
+predict4 = predict(svyglm.strs.logit, newdata = test,type = "response")
+roc_logit = roc(test$divorce~predict4)
+TPR = roc_logit$sensitivities
+FPR = 1 - roc_logit$specificities
+plot(FPR, TPR, xlim=c(0,1), ylim=c(0,1), type='l', lty=1, lwd=2, col='red')
+abline(a=0, b=1, lty=2, col='blue')
+text(0.7, 0.4, label = paste("AUC=", round(auc(roc_logit),2) ))
+```
+
+We drew a ROC curve to illustrate the diagnostic ability of our model. After drawing the ROC curve, we noticed that the area under curve (AUC) is 0.75. This indicates that there is 75% chance to discriminate between a person is divorced or not. The high AUC value indicates that our model has good discrimination ability.
+
+Next, we wanted to check the residuals and to find if there are some diagnostic issues.
+
+According to Webb(2017), "In logistic regression, as with linear regression, the residuals can be defined as observed minus expected values. The data are discrete and so are the residuals. As a result, plots of raw residuals from logistic regression are generally not useful. The binned residuals plot instead, after dividing the data into categories (bins) based on their fitted values, the average residual versus the average fitted value for each bin." Thus, we chose to use binnedplot instead of residuals plots.
+
+```{r,echo=F,message=F}
+library(arm)
+binnedplot(fitted(svyglm.strs.logit), residuals(svyglm.strs.logit, type = "response"),
+           nclass = NULL, xlab = "Expected Values", ylab = "Average residual", 
+           main = "Binned residual plot", 
+           cex.pts = 0.8, 
+           col.pts = 1, 
+           col.int = "gray")
+```
+
+The grey lines represent  ± 2 SE bands, which we would expect to contain about 95% of the observations. Since the majority of the fitted values fall within the SE bands, this model is reasonable.
+
+```{r,echo=F,message=F, warning=F}
+probabilities <- predict(svyglm.strs.logit, type = "response")
+predicted.classes <- ifelse(probabilities > 0.5, "pos", "neg")
+mydata <- train %>%
+  dplyr::select(age)
+predictors <- colnames(mydata)
+# Bind the logit and tidying the data for plot
+mydata <- mydata %>%
+  mutate(logit = log(probabilities/(1-probabilities))) %>%
+  gather(key = "predictors", value = "predictor.value", -logit)
+ggplot(mydata, aes(logit, predictor.value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() + 
+  facet_wrap(~predictors, scales = "free_y")
+```
+
+For further model diagnostics, we have drawn the scatter plot of age variable, the scatter plot is shown above. By visually checking the plot we concluded that the scatter plot is smooth, which means that age is linearly associated with the outcome.
+
+```{r,echo=F,message=F}
+set.seed(777)
+testi1 = sample(gss2017$caseid, 6000)
+test1 = gss2017[gss2017$caseid %in% testi,]
+train1 = gss2017[!gss2017$caseid %in% testi,]
+train1 = train1 %>%
+  dplyr::select(-caseid,-marital_status) #remove id from the train
+test1 = test1 %>%
+  dplyr::select(-caseid,-marital_status)
+regularmodel <-  glm(formula = divorce ~ feelings_life + self_rated_mental_health + self_rated_health + 
+      + age + total_children + own_rent + 
+                      pop_center + education + income_family, 
+                      family = "binomial", data = train1)
+summary(regularmodel)
+```
+
+We also created an alternative model that is not survey design based. We used the glm() function and set the family to be binomial. The glm() function is a function in R which fits generalized linear model. The model is shown below, where p is the probability of getting divorced.
+$$
+log(\frac{p}{1-p})=-5.608\ -0.099feelings\_life\ +0.144self\_rated\_mental\_healthExcellent\\-0.029self\_rated\_mental\_healthFair\ -0.0523self\_rated\_mental\_healthGood\\-0.052self\_rated\_mental\_healthPoor\ +0.107self\_rated\_mental\_healthVery good\\+1.476self\_rated\_healthExcellent\ +1.351self\_rated\_healthFair\\+1.354self\_rated\_healthGood\ +1.483self\_rated\_healthPoor\\ +1.363self\_rated\_healthVery good\ +0.028age\ +0.028total\_children\\-0.546pop\_centerNot Large Urban Population Centres \\-0.269pop_centerRural areas and small population centres (non CMA/CA)\\+0.141educationcollege\ -0.223educationHigh school\ -0.747educationless than high school\\-0.225educationTrade certificate or diploma \ +0.153educationUniversity \\-0.466income\_family125,000 and more\ +1.241income\_family25,000 to 49,999\\+1.024income\_family50,000 to 74,999\ +0.519income\_family75,000 to 99,999\\+1.714income\_familyLess than 25,000\ +0.421own\_rentRent                   
+$$
+
+The regular model created by glm() function identifies same significant variables as the model created by svyglm() function. However, there are differences in the slope of the model, which indicates that the regular model have calculated different log odds. 
+
+```{r,echo=F,message=F}
+library(pROC)
+predict1 = predict(regularmodel,newdata=test,type="response")
+roc_logit = roc(test1$divorce~predict1)
+TPR = roc_logit$sensitivities
+FPR = 1 - roc_logit$specificities
+plot(FPR, TPR, xlim=c(0,1), ylim=c(0,1), type='l', lty=1, lwd=2, col='red')
+abline(a=0, b=1, lty=2, col='blue')
+text(0.7, 0.4, label = paste("AUC=", round(auc(roc_logit),2) ))
+
+```
+
+We drew a receiving operating characteristic (ROC) curve to illustrate the diagnostic ability of our model. After drawing the ROC curve, we noticed that the area under the curve (AUC) is 0.75. This indicates that there is a 75% chance to discriminate between a person being divorced or not. 
+
+We noticed that the regular model has the same AUC value as the survey design based model, which means these two models have the same discrimination ability. However, since our model is based on the stratified random sampling method across Canada, it is better to use the survey design based model because it contains the information of the sampling results.
+
+## Results
+
+```{r,echo=F,message=F,warning=F}
+library(visreg)
+visreg(svyglm.strs.logit, "divorce", by = "income_family")
+```
+
+In accordance with the statistical analysis result above, the realistic studies and facts also support the conclusion that the income has an impact on the possibility of divorce. It is likely that more generous cash transfers could have a stabilization effect on marriage. There would be less financial constraints and fewer arguments that lead to divorce in high-income family(Hankins and Hoekstra, 2011). The income effect from the economic theory could also explains the surprise findings partly: higher income improves living quality therefore enhances marital stability. Moreover, they will consider carefully whether get divorced since it is not simple for property division for wealthier family.
+
+The model shows that with the age increasing, people have a greater likelihood to get divorced. It may be explained by the fact that older people may face fewer financial constraints than the younger. In addition, they will not have the concern of child support and the impact on children. From the perspective of economics, older people may attach less importance to marriage because they have more free time to pursue various substitution effects.
+
+Our model also concludes that families with more children are more likely to get divorced. It is possible that kids increased divorce risks since they reduced the time for married couples to focus on themselves and on each other. Moreover, raising kids would add financial burden as well. 
+
+However, according to statistics, only 40 percent of divorced couples have children, compared to the 66 percent of divorced couples who do not. According to Dos & Rhoades Stanley & Markman(2009), the decline of satisfaction in a marriage with kids was nearly as steep as childless couples. We have just concluded that couples with more children are more likely to get divorced. Interestingly, this is a disputable topic. Next step, we will focus on couples with and without children to get further conclusions on the impact of children on marriage.
+
+The ownership of housing is also linked to divorce. It is not difficult to find that a part of the people who are still providing houses after marriage, and a large group of people who have married but have not bought houses. In order to pay the mortgage, couples together to do everything to pinch pennies. In order to save money to afford a room, they had no opportunity to relieve their emotions so that there are more quarrels. As a result, they end up in divorced.
+
+## Discussion
+
+The strength of this dataset is that it contains plenty of observations, which indicates the sample size is quite large and our model will be more precise under the large sample size. Also, with large amount of observations, we can easily divide the data set into training and testing sets to check if our model is valid.
+
+However, this dataset still has some weaknesses. 
+
+The main drawback is too many NAs, which cannot make any contributions to our analysis. After eliminating the NAs, the number of analyzable variables and observations decreases, which may influence the accuracy of our model. Another disadvantage is that the dataset has more categorical variables other than numerical variables, which limits our choice of fitting model. 
+
+Also, there is a weakness of our dataset is that it is not representative over all age ranges. The data recorded all people with 80 years and older as "80". Our age variable indicates that the average age of the respondent is 52 years old, which is much higher than 40.8, the average age for Canadian in 2017(Erin Duffin, 2020). 
+
+Additionally, there are more potential factors that affect the age of divorce but no data has been collected such as the kind of occupation. Some busy work may cause people who do not have enough time to take care of the family, and then it is possible to trigger a divorce. What’s more, as the living environment of people is changing, the variables that affect the age of divorce are also changing. This will lead to inaccurate predictions of divorce age when people use the logistic regression model fitted by this 2017 GSS dataset to predict the age of divorce in the future.
+
+Since the dataset does not include enough all age, we would like to look into the divorce possibility for all ages next. Since this survey was distributed via telephone, we would like to distribute our questionnaires through Internet platforms, like facebook, tweet, which would involve more young people in our respondents in the next stage.
+
+Additionally, people of different ages are likely to hold different views to other factors like income, houses and children. Similarly, we know that children and income of the family can have an influence on the divorce rate, but we could look into whether the effect is different across income groups. Thus, we could include higher order terms or interactions between different variables.
+
+```{r,echo=F,message=F,warning=F}
+ggplot(gss2017,aes(x=`age`))+geom_histogram()+theme(text=element_text(size=9),plot.title=element_text(size=15,hjust = 0.5))+labs(title="Histogram for Age")
+```
+
+From the above histogram, we can see that the age variable demonstrates a bimodal distribution. The bimodal distribution indicates that we possibly have two different age groups with two local maximums. A possible solution for the problem is to use Gaussian mixture model, which analyzes multivariate normal distribution.  
+
+We mainly focused on using logistic regression model. In a logistic regression, if observations are correlated, the model may overweight the significance of those observations. It is possible that logit models appear to have more predictive power than they actually do because of sampling bias. 
+
+## References
+Canada's divorce is data revealing—and still murky, Paul Mayne, 2020
+https://phys.org/news/2020-02-canada-divorce-revealingand-murky.html
+
+Perceived Causes of Divorce: An Analysis of Interrelationships, Margaret Guminski Cleek and T. Allan Pearson, 1993
+https://www-jstor-org.myaccess.library.utoronto.ca/stable/352080?seq=3#metadata_info_tab_contents
+
+Reasons for Divorce and Recollections of Premarital Intervention: Implications for Improving Relationship Education, Shelby B. Scott, Galena K. Rhoades, Scott M. Stanley, Elizabeth S. Allen, and Howard J. Markman, 2014 
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4012696/
+
+Canada at a Glance 2017 Population
+https://www150.statcan.gc.ca/n1/pub/91-215-x/2018002/sec2-eng.htm
+
+Median age of the resident population of Canada from 2000 to 2020
+https://www.statista.com/statistics/444844/canada-median-age-of-resident-population
+
+Hankins, S., & Hoekstra, M. (2011). Lucky in Life, Unlucky in Love? The Effect of Random Income Shocks on Marriage and Divorce. SSRN Electronic Journal. doi: 10.2139/ssrn.1629878
+
+Doss, B. D., Rhoades, G. K., Stanley, S. M., & Markman, H. J. (2009), The effect of the transition to parenthood on relationship quality: An 8-year prospective study. https://doi.org/10.1037/a0013969
+
+Barry Schwartz(2004), The Paradox of Choice
+
+gss2017 family, https://sda-artsci-utoronto-ca.myaccess.library.utoronto.ca/sdaweb/dli2/gss/gss31/gss31/doc/gss30003.htm#csp_110c
+
+pROC package
+https://www.rdocumentation.org/packages/pROC/versions/1.16.2
+
+arm Package
+https://www.rdocumentation.org/packages/arm/versions/1.11-2
+
+visreg Package
+https://www.rdocumentation.org/packages/visreg/versions/2.7.0/topics/visreg
+
+Logistic Regression Assumptions and Diagnostics in R
+http://www.sthda.com/english/articles/36-classification-methods-essentials/148-logistic-regression-assumptions-and-diagnostics-in-r/
+
+Understanding ROC-AUC curve
+https://towardsdatascience.com/understanding-auc-roc-curve-68b2303cc9c5
